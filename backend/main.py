@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from enum import Enum
 from typing import Dict, Tuple, Any
+import requests
 from backend.astro_calc import calculate_real_transits
 
 app = FastAPI(title="AstroLife AI API")
@@ -48,8 +49,7 @@ class UserInput(BaseModel):
     name: str
     dob: str
     tob: str
-    latitude: float
-    longitude: float
+    city: str  # Direct city string input
 
 def get_zodiac_sign(degree: float) -> ZodiacSign:
     adjusted_degree = float(degree) % 360
@@ -65,6 +65,21 @@ def check_dignity(planet_name: str, sign: ZodiacSign) -> Tuple[bool, bool]:
         return (sign == ucha_sign, sign == neecha_sign)
     return False, False
 
+def geocode_city(city_name: str) -> Tuple[float, float]:
+    """Helper to convert City Name -> Lat/Lng via server-side request"""
+    try:
+        url = f"https://nominatim.openstreetmap.org/search?q={city_name}&format=json&limit=1"
+        headers = {"User-Agent": "AstroLifeBackend/1.0"}
+        resp = requests.get(url, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data:
+                return float(data[0]["lat"]), float(data[0]["lon"])
+    except Exception as e:
+        print(f"Geocoding error: {e}")
+    # Default fallback: Chennai / South India coordinates
+    return 13.0827, 80.2707
+
 @app.get("/")
 def home():
     return {"message": "AstroLife AI Server Running!"}
@@ -72,6 +87,9 @@ def home():
 @app.post("/api/v1/daily-dashboard")
 def get_daily_dashboard(user: UserInput):
     try:
+        # Server-side geocoding
+        lat, lon = geocode_city(user.city)
+        
         raw_planets = calculate_real_transits()
         enriched_planets = {}
         ucham_list = []
@@ -79,7 +97,6 @@ def get_daily_dashboard(user: UserInput):
 
         if isinstance(raw_planets, dict):
             for planet, val in raw_planets.items():
-                # Extract degree safely whether val is a float, int, str, or dict
                 if isinstance(val, dict):
                     deg_val = float(val.get("degree", val.get("deg", val.get("position", 0.0))))
                 else:
@@ -98,7 +115,7 @@ def get_daily_dashboard(user: UserInput):
                     
                 enriched_planets[planet] = status
 
-        guidance = f"Planetary transit calculations completed for {user.name}."
+        guidance = f"Planetary transit calculations completed for {user.name} ({user.city})."
         if ucham_list:
             guidance += f" Excellent strength from Ucham planets: {', '.join(ucham_list)}."
         if neecham_list:
