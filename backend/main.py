@@ -1,18 +1,54 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from enum import Enum
+from datetime import datetime
+from typing import List, Dict, Tuple
 from backend.astro_calc import calculate_real_transits
 
 app = FastAPI(title="AstroLife AI API")
 
-# 🔓 Enable CORS for all web clients
+# 🔓 Enable CORS for Flutter Web
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows requests from any frontend origin (like localhost)
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows GET, POST, OPTIONS, etc.
+    allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ==========================================
+# PHASE 1: DATA STRUCTURES & DIGNITY DATA
+# ==========================================
+
+class ZodiacSign(Enum):
+    ARIES = (1, "Aries")
+    TAURUS = (2, "Taurus")
+    GEMINI = (3, "Gemini")
+    CANCER = (4, "Cancer")
+    LEO = (5, "Leo")
+    VIRGO = (6, "Virgo")
+    LIBRA = (7, "Libra")
+    SCORPIO = (8, "Scorpio")
+    SAGITTARIUS = (9, "Sagittarius")
+    CAPRICORN = (10, "Capricorn")
+    AQUARIUS = (11, "Aquarius")
+    PISCES = (12, "Pisces")
+
+    def __init__(self, number, fullname):
+        self.number = number
+        self.fullname = fullname
+
+# Dignity Mapping: [Planet, Exaltation (Ucha) Sign, Debilitation (Neecha) Sign]
+PLANET_DIGNITIES = {
+    "Sun": (ZodiacSign.ARIES, ZodiacSign.LIBRA),
+    "Moon": (ZodiacSign.TAURUS, ZodiacSign.SCORPIO),
+    "Mars": (ZodiacSign.CAPRICORN, ZodiacSign.CANCER),
+    "Mercury": (ZodiacSign.VIRGO, ZodiacSign.PISCES),
+    "Jupiter": (ZodiacSign.CANCER, ZodiacSign.CAPRICORN),
+    "Venus": (ZodiacSign.PISCES, ZodiacSign.VIRGO),
+    "Saturn": (ZodiacSign.LIBRA, ZodiacSign.ARIES),
+}
 
 class UserInput(BaseModel):
     name: str
@@ -21,23 +57,75 @@ class UserInput(BaseModel):
     latitude: float
     longitude: float
 
+
+# ==========================================
+# PHASE 2: NATAL ENGINE LOGIC FUNCTIONS
+# ==========================================
+
+def get_zodiac_sign(degree: float) -> ZodiacSign:
+    """Calculates ZodiacSign from degree (0-360)"""
+    adjusted_degree = degree % 360
+    sign_number = int((adjusted_degree / 30) + 1)
+    for sign in ZodiacSign:
+        if sign.number == sign_number:
+            return sign
+    return ZodiacSign.ARIES
+
+def check_dignity(planet_name: str, sign: ZodiacSign) -> Tuple[bool, bool]:
+    """Returns (is_ucham, is_neecham)"""
+    if planet_name in PLANET_DIGNITIES:
+        ucha_sign, neecha_sign = PLANET_DIGNITIES[planet_name]
+        return (sign == ucha_sign, sign == neecha_sign)
+    return False, False
+
+
+# ==========================================
+# PHASE 3: FASTAPI API ENDPOINTS
+# ==========================================
+
 @app.get("/")
 def home():
     return {"message": "AstroLife AI Server Running!"}
 
 @app.post("/api/v1/daily-dashboard")
 def get_daily_dashboard(user: UserInput):
-    # Calculate real planetary transits via Swiss Ephemeris
-    planets = calculate_real_transits()
+    # 1. Fetch real-time planetary transits from Swiss Ephemeris
+    raw_planets = calculate_real_transits()
     
+    # 2. Analyze Ucham (Exalted) & Neecham (Debilitated) status
+    enriched_planets = {}
+    ucham_list = []
+    neecham_list = []
+
+    for planet, degree in raw_planets.items():
+        sign = get_zodiac_sign(degree)
+        is_ucham, is_neecham = check_dignity(planet, sign)
+        
+        status = f"{sign.fullname} ({degree:.2f}°)"
+        if is_ucham:
+            status += " [UCHAM / Exalted 🌟]"
+            ucham_list.append(planet)
+        elif is_neecham:
+            status += " [NEEHAM / Debilitated ⚠️]"
+            neecham_list.append(planet)
+            
+        enriched_planets[planet] = status
+
+    # Build cosmic guidance summary
+    guidance = f"Calculated placements for {user.name}."
+    if ucham_list:
+        guidance += f" Strong blessings from Ucham planets: {', '.join(ucham_list)}."
+    if neecham_list:
+        guidance += f" Caution advised for Neecham planets: {', '.join(neecham_list)}."
+
     return {
         "user_name": user.name,
         "date": "Today",
         "scores": {
-            "focus": 85,
-            "wealth": 72,
-            "health": 90
+            "focus": 85 if not neecham_list else 70,
+            "wealth": 90 if "Jupiter" in ucham_list else 75,
+            "health": 88
         },
-        "guidance": "Sun and Mercury alignment boosts mental clarity today. Excellent day for strategic decision-making.",
-        "planetary_transits": planets
+        "guidance": guidance,
+        "planetary_transits": enriched_planets
     }
