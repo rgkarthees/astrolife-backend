@@ -1,11 +1,20 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import datetime
 from backend.astro_calc import calculate_real_transits
 
 app = FastAPI(title="AstroLife AI API")
 
-class UserDetails(BaseModel):
+# 🔓 Enable CORS for all web clients
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows requests from any frontend origin (like localhost)
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows GET, POST, OPTIONS, etc.
+    allow_headers=["*"],
+)
+
+class UserInput(BaseModel):
     name: str
     dob: str
     tob: str
@@ -17,24 +26,18 @@ def home():
     return {"message": "AstroLife AI Server Running!"}
 
 @app.post("/api/v1/daily-dashboard")
-def get_daily_dashboard(user: UserDetails):
-    today = datetime.datetime.now()
-    
-    # Fetch real-time planetary positions
-    real_transits = calculate_real_transits()
+def get_daily_dashboard(user: UserInput):
+    # Calculate real planetary transits via Swiss Ephemeris
+    planets = calculate_real_transits()
     
     return {
         "user_name": user.name,
-        "date": today.strftime("%Y-%m-%d"),
+        "date": "Today",
         "scores": {
             "focus": 85,
-            "wealth": 90,
-            "health": 65
+            "wealth": 72,
+            "health": 90
         },
-        "live_transits": real_transits,
-        "guidance": "Sun Dasha + 11th House Rahu provides networking gains.",
-        "dos_and_donts": {
-            "do": "Leverage business contacts & planning.",
-            "dont": "Avoid hasty investments."
-        }
+        "guidance": "Sun and Mercury alignment boosts mental clarity today. Excellent day for strategic decision-making.",
+        "planetary_transits": planets
     }
