@@ -3,7 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from enum import Enum
 from typing import Dict, Tuple, Any
-import requests
+import urllib.request
+import urllib.parse
+import json
 from backend.astro_calc import calculate_real_transits
 
 app = FastAPI(title="AstroLife AI API")
@@ -49,7 +51,7 @@ class UserInput(BaseModel):
     name: str
     dob: str
     tob: str
-    city: str  # Direct city string input
+    city: str
 
 def get_zodiac_sign(degree: float) -> ZodiacSign:
     adjusted_degree = float(degree) % 360
@@ -66,15 +68,16 @@ def check_dignity(planet_name: str, sign: ZodiacSign) -> Tuple[bool, bool]:
     return False, False
 
 def geocode_city(city_name: str) -> Tuple[float, float]:
-    """Helper to convert City Name -> Lat/Lng via server-side request"""
+    """Helper to convert City Name -> Lat/Lng using built-in urllib (no extra requirements)"""
     try:
-        url = f"https://nominatim.openstreetmap.org/search?q={city_name}&format=json&limit=1"
-        headers = {"User-Agent": "AstroLifeBackend/1.0"}
-        resp = requests.get(url, headers=headers, timeout=5)
-        if resp.status_code == 200:
-            data = resp.json()
-            if data:
-                return float(data[0]["lat"]), float(data[0]["lon"])
+        encoded_city = urllib.parse.quote(city_name)
+        url = f"https://nominatim.openstreetmap.org/search?q={encoded_city}&format=json&limit=1"
+        req = urllib.request.Request(url, headers={"User-Agent": "AstroLifeBackend/1.0"})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            if response.status == 200:
+                data = json.loads(response.read().decode())
+                if data:
+                    return float(data[0]["lat"]), float(data[0]["lon"])
     except Exception as e:
         print(f"Geocoding error: {e}")
     # Default fallback: Chennai / South India coordinates
@@ -87,7 +90,7 @@ def home():
 @app.post("/api/v1/daily-dashboard")
 def get_daily_dashboard(user: UserInput):
     try:
-        # Server-side geocoding
+        # Geocode using Python standard library
         lat, lon = geocode_city(user.city)
         
         raw_planets = calculate_real_transits()
