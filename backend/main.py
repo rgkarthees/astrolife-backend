@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import datetime
-from astro_calc import calculate_real_transits
+from backend.astro_calc import calculate_real_transits
 
 app = FastAPI(title="AstroLife AI API")
 
