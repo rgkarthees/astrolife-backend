@@ -78,8 +78,13 @@ def get_daily_dashboard(user: UserInput):
         neecham_list = []
 
         if isinstance(raw_planets, dict):
-            for planet, degree in raw_planets.items():
-                deg_val = float(degree)
+            for planet, val in raw_planets.items():
+                # Extract degree safely whether val is a float, int, str, or dict
+                if isinstance(val, dict):
+                    deg_val = float(val.get("degree", val.get("deg", val.get("position", 0.0))))
+                else:
+                    deg_val = float(val)
+
                 sign = get_zodiac_sign(deg_val)
                 is_ucham, is_neecham = check_dignity(planet, sign)
                 
@@ -111,7 +116,6 @@ def get_daily_dashboard(user: UserInput):
             "planetary_transits": enriched_planets
         }
     except Exception as e:
-        # Fallback response so Flutter NEVER receives null
         return {
             "user_name": user.name,
             "date": "Today",
@@ -120,6 +124,6 @@ def get_daily_dashboard(user: UserInput):
                 "wealth": 70,
                 "health": 80
             },
-            "guidance": f"Calculated with general transits (Calculation notice: {str(e)})",
+            "guidance": f"General transits (Calculation notice: {str(e)})",
             "planetary_transits": {"Status": "Active"}
         }
